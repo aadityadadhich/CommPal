@@ -1,0 +1,2 @@
+# Role 7: Frontend: Dashboard, Design & Demo Producer (R7)
+**Scope:** Dashboard overview with e-wallet balance and spending cap gauges, inventory grid with color-coded days-of-cover bars, orders history table with Decision Inspector modal, mandate policy editor with emergency kill switch, cryptographic hash-chain audit table with 1-click verification, demo studio (virtual time-travel clock & chaos controls), and presentation video storyboard.
