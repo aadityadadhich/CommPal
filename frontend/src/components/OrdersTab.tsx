@@ -5,8 +5,8 @@ import {
   ShoppingBag, CheckCircle2, Clock, AlertCircle, 
   ExternalLink, ChevronRight, Eye, Info 
 } from "lucide-react";
-import { Order } from "../lib/types";
-import { fetchOrderDetail } from "../lib/api";
+import { Order } from "@/lib/types";
+import { fetchOrderDetail } from "@/lib/api";
 
 interface OrdersTabProps {
   orders: Order[];

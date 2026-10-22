@@ -5,8 +5,8 @@ import {
   ShieldCheck, ShieldAlert, Lock, Save, Sliders, 
   AlertTriangle, CheckCircle2, History 
 } from "lucide-react";
-import { MandateBody } from "../lib/types";
-import { fetchMandate, updateMandate, toggleKillSwitch } from "../lib/api";
+import { MandateBody } from "@/lib/types";
+import { fetchMandate, updateMandate, toggleKillSwitch } from "@/lib/api";
 
 interface MandateTabProps {
   onRefresh: () => void;
@@ -204,7 +204,7 @@ export default function MandateTab({ onRefresh }: MandateTabProps) {
                       onChange={(e) => {
                         const newAllow = e.target.checked
                           ? [...mandate.merchants.allow, m]
-                          : mandate.merchants.allow.filter((x) => x !== m);
+                          : mandate.merchants.allow.filter((x: string) => x !== m);
                         setMandate({
                           ...mandate,
                           merchants: { ...mandate.merchants, allow: newAllow },

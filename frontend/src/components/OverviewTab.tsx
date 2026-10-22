@@ -5,8 +5,8 @@ import {
   Wallet, ShieldCheck, AlertCircle, ShoppingBag, 
   ArrowUpRight, PlusCircle, CheckCircle2, DollarSign, PieChart 
 } from "lucide-react";
-import { WalletSummary, PendingApproval, Order } from "../lib/types";
-import { actOnApproval } from "../lib/api";
+import { WalletSummary, PendingApproval, Order } from "@/lib/types";
+import { actOnApproval } from "@/lib/api";
 
 interface OverviewTabProps {
   wallet?: WalletSummary;

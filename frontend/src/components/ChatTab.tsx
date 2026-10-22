@@ -5,8 +5,8 @@ import {
   Send, Mic, MicOff, Bot, User, CheckCircle2, Clock, 
   AlertTriangle, ShieldCheck, ShoppingCart, Sparkles, ArrowRight 
 } from "lucide-react";
-import { ChatMessage, CardPayload } from "../lib/types";
-import { sendChatMessage, actOnApproval } from "../lib/api";
+import { ChatMessage, CardPayload } from "@/lib/types";
+import { sendChatMessage, actOnApproval } from "@/lib/api";
 
 interface ChatTabProps {
   onRefresh: () => void;

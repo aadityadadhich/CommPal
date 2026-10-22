@@ -5,7 +5,7 @@ import {
   Sliders, FastForward, RotateCcw, AlertTriangle, 
   Flame, CheckCircle2, Video, Zap 
 } from "lucide-react";
-import { advanceClock, resetDemoScenario, fetchChaos, toggleChaosFlag } from "../lib/api";
+import { advanceClock, resetDemoScenario, fetchChaos, toggleChaosFlag } from "@/lib/api";
 
 interface DemoStudioTabProps {
   onRefresh: () => void;

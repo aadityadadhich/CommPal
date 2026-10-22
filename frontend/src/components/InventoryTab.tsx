@@ -5,8 +5,8 @@ import {
   Package, AlertTriangle, CheckCircle2, Clock, 
   RotateCcw, Sparkles, TrendingDown, Plus 
 } from "lucide-react";
-import { Item } from "../lib/types";
-import { updateItemStock } from "../lib/api";
+import { Item } from "@/lib/types";
+import { updateItemStock } from "@/lib/api";
 
 interface InventoryTabProps {
   items: Item[];

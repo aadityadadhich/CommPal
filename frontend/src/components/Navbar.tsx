@@ -5,8 +5,8 @@ import {
   ShieldCheck, ShieldAlert, Clock, RefreshCw, FastForward, 
   Wallet, Zap, Activity 
 } from "lucide-react";
-import { ClockState, WalletSummary } from "../lib/types";
-import { toggleKillSwitch, advanceClock, resetDemoScenario } from "../lib/api";
+import { ClockState, WalletSummary } from "@/lib/types";
+import { toggleKillSwitch, advanceClock, resetDemoScenario } from "@/lib/api";
 
 interface NavbarProps {
   clockState?: ClockState;

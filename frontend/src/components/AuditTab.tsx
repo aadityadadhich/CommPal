@@ -5,8 +5,8 @@ import {
   ShieldCheck, ShieldAlert, CheckCircle2, Lock, 
   RefreshCw, FileText, Key 
 } from "lucide-react";
-import { AuditEvent } from "../lib/types";
-import { fetchAuditTrail, verifyAuditIntegrity } from "../lib/api";
+import { AuditEvent } from "@/lib/types";
+import { fetchAuditTrail, verifyAuditIntegrity } from "@/lib/api";
 
 export default function AuditTab() {
   const [events, setEvents] = useState<AuditEvent[]>([]);

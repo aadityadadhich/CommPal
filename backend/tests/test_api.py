@@ -64,3 +64,33 @@ def test_demo_clock_advance_api():
     assert "tick_result" in data
     # 1 day advance should fire the daily milk rule!
     assert data["tick_result"]["rules_fired"] >= 1
+
+def test_payments_and_webhook_api():
+    client = TestClient(app)
+    # 1. Create Payment
+    resp = client.post("/api/payments", json={
+        "amount": 42.00,
+        "currency": "USD",
+        "user_id": "test_user_api",
+        "description": "Test order",
+        "idempotency_key": "idem-api-test-1"
+    })
+    assert resp.status_code == 200
+    p_data = resp.json()
+    assert p_data["amount"] == 42.00
+    assert p_data["status"] == "pending"
+    p_id = p_data["id"]
+
+    # 2. Cancel Payment
+    resp_cancel = client.post(f"/api/payments/{p_id}/cancel")
+    assert resp_cancel.status_code == 200
+    assert resp_cancel.json()["status"] == "canceled"
+
+    # 3. Webhook Delivery
+    resp_webhook = client.post("/api/webhooks/paypal", json={
+        "id": "evt-webhook-test-1",
+        "type": "payment.succeeded",
+        "payment_id": p_id
+    })
+    assert resp_webhook.status_code == 200
+    assert resp_webhook.json()["received"] is True
