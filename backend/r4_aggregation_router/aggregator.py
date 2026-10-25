@@ -3,19 +3,11 @@ from channel3_sdk import Channel3
 from dotenv import load_dotenv
 load_dotenv(dotenv_path="keys.env")
 
-        decision = Decision(
-            id=f"dec-{uuid.uuid4().hex[:8]}",
-            intent_id=intent_id,
-            chosen_offer=chosen,
-            runner_up_offer=runner_up,
-            urgency_class=urgency,
-            weights=weights,
-            score_breakdown=breakdowns,
-            filtered_out=all_filtered,
-            explanation=explanation,
-            created_at=now.isoformat()
-        )
+api_key = os.getenv("CHANNEL3_API_KEY")
+client = Channel3(api_key=api_key)
 
-        return decision, all_offers, all_filtered
+results = client.products.search(query="nike", limit = 10)
+top_10_products = [product for _, product in zip(range(10), results)]
 
-router_aggregator = RouterAggregator()
+for products in top_10_products:
+    print(products.title)
