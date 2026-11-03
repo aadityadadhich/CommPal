@@ -7,6 +7,11 @@ api_key = os.getenv("CHANNEL3_API_KEY")
 client = Channel3(api_key=api_key)
 
 results = client.products.search(query="nike", limit = 10)
-top_10_products = [product for _, product in zip(range(10), results)]
+actual = [product for _, product in zip(range(10), results)]
+
+for products in actual:
+    print(f'Title: {products}')
+    description = products.description or "no description"
+    print(f"Description: {description[:160]}..." if len(description) > 160 else f"Description: {description}")
 
     
