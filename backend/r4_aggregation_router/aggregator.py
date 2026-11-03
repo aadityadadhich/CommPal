@@ -9,5 +9,4 @@ client = Channel3(api_key=api_key)
 results = client.products.search(query="nike", limit = 10)
 top_10_products = [product for _, product in zip(range(10), results)]
 
-for products in top_10_products:
-    print(products.title)
+    
