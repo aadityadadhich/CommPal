@@ -5,20 +5,23 @@ import json
 from typing import Dict, Any, Tuple, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from datetime import datetime, timezone
 
-from backend.r1_payments_wallet.models import Payment, PaymentEvent
+from backend.app.wallet.models import Payment, PaymentEvent
 from backend.app.config import settings
 from backend.app.scheduler.virtual_clock import clock
 
+
 class IdempotencyConflict(Exception):
-    """Reused idempotency key for different payment details (Milind's design)."""
+    """Reused idempotency key for different payment details."""
+
 
 class PaymentProviderError(Exception):
-    """Payment provider checkout failure (Milind's design)."""
+    """Payment provider checkout failure."""
+
 
 class InvalidPaymentEvent(Exception):
-    """Invalid or unverified payment event (Milind's design)."""
+    """Invalid or unverified payment event."""
+
 
 def create_payment(
     db: Session,
@@ -27,7 +30,7 @@ def create_payment(
     user_id: str = "default_user",
     description: str = "",
     idempotency_key: Optional[str] = None,
-    provider: str = "paypal_sandbox"
+    provider: str = "paypal_sandbox",
 ) -> Tuple[Payment, bool]:
     """
     Persist a payment with idempotency protection.
@@ -39,14 +42,14 @@ def create_payment(
     if idempotency_key:
         existing = db.query(Payment).filter(
             Payment.user_id == user_id,
-            Payment.idempotency_key == idempotency_key
+            Payment.idempotency_key == idempotency_key,
         ).first()
 
     if existing:
         if (round(existing.amount, 2), existing.currency, existing.description) != (
             round(amount, 2),
             currency,
-            description
+            description,
         ):
             raise IdempotencyConflict("Idempotency key reused with mismatched payment data.")
         return existing, False
@@ -61,7 +64,7 @@ def create_payment(
         provider=provider,
         idempotency_key=idempotency_key,
         created_at=now_str,
-        updated_at=now_str
+        updated_at=now_str,
     )
 
     try:
@@ -74,19 +77,20 @@ def create_payment(
             raise
         existing = db.query(Payment).filter(
             Payment.user_id == user_id,
-            Payment.idempotency_key == idempotency_key
+            Payment.idempotency_key == idempotency_key,
         ).first()
         if not existing:
             raise
         if (round(existing.amount, 2), existing.currency, existing.description) != (
             round(amount, 2),
             currency,
-            description
+            description,
         ):
             raise IdempotencyConflict("Idempotency key reused with mismatched payment data.")
         return existing, False
 
     return payment, True
+
 
 def cancel_payment(db: Session, payment_id: str) -> Payment:
     payment = db.query(Payment).filter(Payment.id == payment_id).first()
@@ -101,14 +105,14 @@ def cancel_payment(db: Session, payment_id: str) -> Payment:
     db.refresh(payment)
     return payment
 
+
 def process_provider_event(
     db: Session,
     provider_name: str,
-    payload: Dict[str, Any]
+    payload: Dict[str, Any],
 ) -> bool:
     """
     Apply a normalized, signature-verified webhook exactly once with deduplication.
-    Incorporated from Milind's services.py.
     """
     event_id = payload.get("id") or payload.get("event_id")
     event_type = payload.get("type") or payload.get("event_type")
@@ -126,14 +130,13 @@ def process_provider_event(
     if event_type not in status_by_event:
         raise InvalidPaymentEvent(f"Unsupported payment event type: {event_type}")
 
-    # Deduplication check
     existing_event = db.query(PaymentEvent).filter(
         PaymentEvent.provider == provider_name,
-        PaymentEvent.event_id == event_id
+        PaymentEvent.event_id == event_id,
     ).first()
 
     if existing_event:
-        return False  # Already processed idempotently
+        return False
 
     payment = None
     if payment_id:
@@ -146,7 +149,7 @@ def process_provider_event(
         event_id=event_id,
         event_type=event_type,
         payload_json=json.dumps(payload),
-        received_at=clock.now().isoformat()
+        received_at=clock.now().isoformat(),
     )
     db.add(event)
 
@@ -157,8 +160,9 @@ def process_provider_event(
     db.commit()
     return True
 
+
 def verify_webhook_signature(raw_body: bytes, signature: str, secret: Optional[str] = None) -> bool:
-    """HMAC SHA-256 signature verification incorporated from Milind's services.py."""
+    """HMAC SHA-256 signature verification."""
     if not secret:
         secret = settings.SECRET_KEY
     expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()

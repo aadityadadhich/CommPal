@@ -1,11 +1,29 @@
-from backend.r1_payments_wallet.providers import (
-    PaymentProvider, PayPalSandboxProvider, MockPaymentProvider,
-    AuthResult, CaptureResult, VoidResult, RefundResult,
-    get_active_payment_provider
+from backend.app.wallet.providers import (
+    PaymentProvider,
+    PayPalSandboxProvider,
+    MockPaymentProvider,
+    Authorization,
+    Capture,
+    Refund,
+    AuthResult,
+    CaptureResult,
+    VoidResult,
+    RefundResult,
+    get_active_provider,
+    get_active_payment_provider,
 )
 
 __all__ = [
-    "PaymentProvider", "PayPalSandboxProvider", "MockPaymentProvider",
-    "AuthResult", "CaptureResult", "VoidResult", "RefundResult",
-    "get_active_payment_provider"
+    "PaymentProvider",
+    "PayPalSandboxProvider",
+    "MockPaymentProvider",
+    "Authorization",
+    "Capture",
+    "Refund",
+    "AuthResult",
+    "CaptureResult",
+    "VoidResult",
+    "RefundResult",
+    "get_active_provider",
+    "get_active_payment_provider",
 ]

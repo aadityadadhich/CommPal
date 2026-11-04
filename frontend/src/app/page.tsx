@@ -56,8 +56,13 @@ export default function Home() {
 
   useEffect(() => {
     loadData();
-    // Periodic poll every 5s for live simulation updates
-    const interval = setInterval(loadData, 5000);
+    // Periodic poll every 5s for live simulation updates (paused when tab is hidden)
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return;
+      }
+      loadData();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 

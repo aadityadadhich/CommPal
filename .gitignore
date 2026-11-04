@@ -5,10 +5,15 @@ __pycache__/
 *.so
 .Python
 backend/venv/
-backend/.env
-.env
+venv/
+.venv/
+*.env
+!*.env.example
 commpal.db
+*.db
 *.db-journal
+*.db-wal
+*.db-shm
 .pytest_cache/
 
 # Node / Next.js

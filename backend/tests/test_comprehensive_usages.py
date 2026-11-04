@@ -1,56 +1,48 @@
 """
 Comprehensive Usage Test Suite for CommPal
 Tests all 7 SRDD role subsystems and user-facing project usages:
-  1. Sandboxed E-Wallet, 3-Bucket Ledger, PayPal Provider & Webhooks (R1)
-  2. Deterministic 9-Rule Spending Mandate Policy Evaluator (R2)
-  3. Cryptographic SHA-256 Hash-Chained Audit Trail & Tamper Detection (R2)
-  4. Inventory Depletion Tracking, Stock Modes & Virtual Clock (R5)
-  5. Multi-Merchant Catalogs, Urgency Derivation, Hard Filters & SLA Scoring (R4)
-  6. Conversational Agent, Fallback NLU & Ollama (qwen2.5:7b) Readiness (R3)
+  1. Sandboxed E-Wallet, 3-Bucket Ledger, PayPal Provider & Webhooks
+  2. Deterministic 9-Rule Spending Mandate Policy Evaluator
+  3. Cryptographic SHA-256 Hash-Chained Audit Trail & Tamper Detection
+  4. Inventory Depletion Tracking, Stock Modes & Virtual Clock
+  5. Multi-Merchant Catalogs, Channel3 Live Adapter, Urgency Derivation & SLA Scoring
+  6. Conversational Agent, Fallback NLU & Ollama (qwen2.5:7b) Integration
   7. Docker Infrastructure, Repository Security & Codebase Hygiene Checks
 """
 import os
 import ast
 import json
-import uuid
-import hmac
-import hashlib
 import importlib
-from datetime import datetime, timezone, timedelta
+from datetime import timedelta
 import pytest
 import httpx
 
 from backend.app.config import settings
-from backend.r5_platform_orchestrator.database import SessionLocal, init_db
-from backend.r5_platform_orchestrator.models import (
-    ItemModel, RuleModel, MandateModel, WalletLedgerModel,
-    OrderIntentModel, OfferModel, DecisionModel, VerdictModel,
-    ApprovalModel, OrderModel, AuditLogModel, StockEventModel,
-    Payment, PaymentEvent
+from backend.app.db.database import SessionLocal, init_db
+from backend.app.db.models import Payment, PaymentEvent
+from backend.app.contracts.schemas import (
+    ItemSpec,
+    StockUpdateRequest,
+    MandateBody,
+    MerchantRules,
+    WalletSummary,
 )
-from backend.r5_platform_orchestrator.contracts import (
-    ItemCreate, ItemSpec, StockUpdateRequest,
-    MandateBody, MandateLimits, MerchantRules, ItemRules, AnomalyRules,
-    Offer, OrderIntentCreate, WalletSummary
+from backend.app.scheduler.virtual_clock import clock
+from backend.app.inventory.service import inventory_service
+from backend.app.db.seed import seed_week_with_asha
+from backend.app.wallet.ledger import ledger_service, InsufficientFundsError
+from backend.app.wallet.providers import MockPaymentProvider
+from backend.app.mandate.evaluator import evaluate_mandate
+from backend.app.audit.hash_chain import append_audit_event, verify_audit_chain
+from backend.app.merchants.catalogs import reset_chaos, chaos_flags
+from backend.app.merchants.adapter import MERCHANTS, channel3_adapter
+from backend.app.router.scoring import (
+    derive_urgency,
+    apply_hard_filters,
+    score_and_rank_offers,
 )
-from backend.r5_platform_orchestrator.clock import clock
-from backend.r5_platform_orchestrator.inventory import inventory_service
-from backend.r5_platform_orchestrator.seed import seed_week_with_asha
-from backend.r1_payments_wallet.ledger import ledger_service, InsufficientFundsError
-from backend.r1_payments_wallet.providers import MockPaymentProvider
-from backend.r1_payments_wallet.services import (
-    create_payment, cancel_payment, process_provider_event,
-    verify_webhook_signature, IdempotencyConflict, InvalidPaymentEvent
-)
-from backend.r2_policy_security_audit.evaluator import evaluate_mandate
-from backend.r2_policy_security_audit.hash_chain import (
-    append_audit_event, verify_audit_chain
-)
-from backend.r4_aggregation_router.catalogs import reset_chaos, chaos_flags
-from backend.r4_aggregation_router.adapters import MERCHANTS
-from backend.r4_aggregation_router.scoring import (
-    derive_urgency, apply_hard_filters, score_and_rank_offers
-)
+from backend.app.agent.gemini_client import ollama_client
+from backend.app.agent.shopping_agent import shopping_agent
 
 
 @pytest.fixture
@@ -66,7 +58,7 @@ def clean_db():
 
 
 # ============================================================================
-# USAGE 1: Sandboxed E-Wallet, 3-Bucket Ledger, PayPal & Webhooks (R1)
+# USAGE 1: Sandboxed E-Wallet, 3-Bucket Ledger, PayPal & Webhooks
 # ============================================================================
 
 def test_u1_wallet_three_bucket_lifecycle(clean_db):
@@ -135,7 +127,6 @@ async def test_u1_mock_paypal_provider_and_chaos():
     ref = await provider.refund(cap.capture_id, 19.99, "idem-ref-1")
     assert ref.status == "COMPLETED"
 
-    # Chaos payment failure injection
     chaos_flags["payment_failure"] = True
     with pytest.raises(RuntimeError):
         await provider.authorize(10.0, "USD", "ref-fail", "idem-fail")
@@ -143,7 +134,7 @@ async def test_u1_mock_paypal_provider_and_chaos():
 
 
 # ============================================================================
-# USAGE 2: Deterministic 9-Rule Spending Mandate Policy Evaluator (R2)
+# USAGE 2: Deterministic 9-Rule Spending Mandate Policy Evaluator
 # ============================================================================
 
 def _wallet_fixture(**overrides) -> WalletSummary:
@@ -209,7 +200,7 @@ def test_u2_mandate_all_nine_rules():
     )
     assert v6.result == "DENY" and "RULE_6_INSUFFICIENT_FUNDS" in v6.rule_ids
 
-    # 7. Price spike anomaly (>30%) -> NEEDS_APPROVAL
+    # 7a. Price spike anomaly (>30%) -> NEEDS_APPROVAL
     v7 = evaluate_mandate(
         "Milk", "item-milk", 1, "chat", "quick10", 6.0, 5.0, "grocery",
         _wallet_fixture(), MandateBody(),
@@ -217,10 +208,17 @@ def test_u2_mandate_all_nine_rules():
     )
     assert v7.result == "NEEDS_APPROVAL" and "RULE_7_PRICE_SPIKE" in v7.rule_ids
 
+    # 7b. Quantity multiple anomaly -> NEEDS_APPROVAL
+    v7_qty = evaluate_mandate(
+        "Milk", "item-milk", 4, "chat", "quick10", 15.0, 3.5, "grocery",
+        _wallet_fixture(), MandateBody(),
+        item_reorder_qty=1.0
+    )
+    assert v7_qty.result == "NEEDS_APPROVAL" and "RULE_7_QTY_MULTIPLE" in v7_qty.rule_ids
 
 
 # ============================================================================
-# USAGE 3: Cryptographic Hash-Chained Audit Trail & Tamper Detection (R2)
+# USAGE 3: Cryptographic Hash-Chained Audit Trail & Tamper Detection
 # ============================================================================
 
 def test_u3_audit_hash_chain_and_tamper_detection(clean_db):
@@ -244,7 +242,7 @@ def test_u3_audit_hash_chain_and_tamper_detection(clean_db):
 
 
 # ============================================================================
-# USAGE 4: Inventory Depletion Tracking & Virtual Clock (R5)
+# USAGE 4: Inventory Depletion Tracking & Virtual Clock
 # ============================================================================
 
 def test_u4_inventory_depletion_and_stock_modes(clean_db):
@@ -270,7 +268,7 @@ def test_u4_inventory_depletion_and_stock_modes(clean_db):
 
 
 # ============================================================================
-# USAGE 5: Multi-Merchant Adapters, Urgency & SLA Scoring (R4)
+# USAGE 5: Multi-Merchant Adapters, Channel3 SDK & SLA Scoring
 # ============================================================================
 
 @pytest.mark.asyncio
@@ -281,12 +279,14 @@ async def test_u5_merchant_adapters_and_urgency_scoring():
     spec = ItemSpec()
     mandate = MandateBody()
 
-    # Query all 5 adapters directly for A4 paper
     offers = []
     for m_id, adapter in MERCHANTS.items():
         res = await adapter.search("a4 paper", spec, 1.0)
         offers.extend(res)
     assert len(offers) >= 3
+
+    # Verify Channel3LiveAdapter is available and safe when CHANNEL3_API_KEY is unset
+    assert hasattr(channel3_adapter, "is_enabled")
 
     # Derive URGENT when stock_qty == 0
     u_urgent = derive_urgency(now + timedelta(minutes=30), now, stock_qty=0.0, user_said_urgent=True)
@@ -301,27 +301,31 @@ async def test_u5_merchant_adapters_and_urgency_scoring():
 
 
 def test_u5_router_aggregator_module_integrity():
-    """Check that backend.r4_aggregation_router.aggregator exports RouterAggregator & router_aggregator."""
-    mod = importlib.import_module("backend.r4_aggregation_router.aggregator")
+    """Check that backend.app.router.aggregator exports RouterAggregator & router_aggregator."""
+    mod = importlib.import_module("backend.app.router.aggregator")
     assert hasattr(mod, "RouterAggregator"), "RouterAggregator class missing from aggregator.py"
     assert hasattr(mod, "router_aggregator"), "router_aggregator instance missing from aggregator.py"
 
 
 # ============================================================================
-# USAGE 6: Conversational Agent & Local Ollama (qwen2.5:7b) Readiness (R3)
+# USAGE 6: Conversational Agent & Local Ollama (qwen2.5:7b) Readiness
 # ============================================================================
 
 def test_u6_agent_module_export_consistency():
-    """Verify backend.app.agent.gemini_client re-exports cleanly without ImportError."""
+    """Verify backend.app.agent.gemini_client exports ollama_client, gemini_client, GeminiClient."""
     mod = importlib.import_module("backend.app.agent.gemini_client")
+    assert hasattr(mod, "ollama_client")
     assert hasattr(mod, "gemini_client")
+    assert hasattr(mod, "GeminiClient")
 
 
-def test_u6_ollama_qwen25_7b_daemon_and_code_support():
+@pytest.mark.asyncio
+async def test_u6_ollama_qwen25_7b_daemon_and_code_support(clean_db):
     """
     Verify:
     1. Local Ollama daemon has 'qwen2.5:7b' model installed and reachable.
-    2. Backend config & R3 agent code support Ollama (OLLAMA_BASE_URL / OLLAMA_MODEL).
+    2. Backend config & agent code support Ollama (OLLAMA_BASE_URL / OLLAMA_MODEL).
+    3. Conversational agent processes multi-rule & depletion requests end-to-end.
     """
     # 1. Check local Ollama HTTP API
     resp = httpx.get("http://127.0.0.1:11434/api/tags", timeout=5.0)
@@ -329,11 +333,17 @@ def test_u6_ollama_qwen25_7b_daemon_and_code_support():
     models = [m.get("name", "") for m in resp.json().get("models", [])]
     assert any("qwen2.5:7b" in m for m in models), f"qwen2.5:7b not found in Ollama models: {models}"
 
-    # 2. Check if backend config and R3 agent have Ollama client configured
-    assert hasattr(settings, "OLLAMA_BASE_URL") or hasattr(settings, "OLLAMA_MODEL"), (
-        "Backend Settings (backend/app/config.py) only configures GEMINI_API_KEY; "
-        "OLLAMA_BASE_URL and OLLAMA_MODEL ('qwen2.5:7b') are not yet wired into R3 agent!"
+    # 2. Check backend settings and ollama_client
+    assert settings.OLLAMA_MODEL == "qwen2.5:7b"
+    assert ollama_client.is_available() is True
+
+    # 3. Process chat message end-to-end
+    msg = await shopping_agent.process_chat(
+        db=clean_db,
+        user_message="I need milk daily, protein powder monthly, and reorder A4 paper when it runs out",
     )
+    assert msg.role == "assistant"
+    assert msg.cards is not None and len(msg.cards) >= 3
 
 
 # ============================================================================
@@ -341,7 +351,7 @@ def test_u6_ollama_qwen25_7b_daemon_and_code_support():
 # ============================================================================
 
 def test_u7_docker_infrastructure_files_present():
-    """Verify Dockerfile, docker-compose.yml, and .dockerignore from feat/docker-infra exist."""
+    """Verify Dockerfile, docker-compose.yml, and .dockerignore exist."""
     assert os.path.exists("Dockerfile"), "Dockerfile missing from root"
     assert os.path.exists("docker-compose.yml"), "docker-compose.yml missing from root"
     assert os.path.exists(".dockerignore"), ".dockerignore missing from root"

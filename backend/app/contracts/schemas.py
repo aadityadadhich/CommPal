@@ -1,15 +1,16 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any, Literal
-from datetime import datetime
 
 # --- Fulfilment & Inventory Types ---
 FulfilmentClass = Literal["quick", "standard", "any"]
+
 
 class ItemSpec(BaseModel):
     brand_pref: Optional[str] = None
     size: Optional[str] = None
     min_rating: float = 3.5
     required_brand: bool = False
+
 
 class ItemBase(BaseModel):
     name: str
@@ -26,8 +27,10 @@ class ItemBase(BaseModel):
     stock_qty: float = 5.0
     stock_confidence: float = 1.0
 
+
 class ItemCreate(ItemBase):
     pass
+
 
 class ItemUpdate(BaseModel):
     name: Optional[str] = None
@@ -43,10 +46,12 @@ class ItemUpdate(BaseModel):
     stock_qty: Optional[float] = None
     stock_confidence: Optional[float] = None
 
+
 class StockUpdateRequest(BaseModel):
     mode: Literal["absolute", "delta", "finished"] = "absolute"
     qty: Optional[float] = 0.0
     reason: Literal["user_said", "auto_consumption", "delivery", "correction"] = "user_said"
+
 
 class ItemResponse(ItemBase):
     id: str
@@ -60,44 +65,55 @@ class ItemResponse(ItemBase):
 # --- Mandate & Security Types ---
 VerdictResult = Literal["ALLOW", "NEEDS_APPROVAL", "DENY"]
 
+
 class MandateLimits(BaseModel):
     per_txn_max: float = 60.0
     auto_approve_under: float = 25.0
     daily_cap: float = 80.0
     monthly_cap: float = 400.0
 
+
 class MerchantRules(BaseModel):
-    allow: List[str] = Field(default_factory=lambda: ["quick10", "zipbasket", "megamart", "bulkbarn", "cornerstore"])
+    allow: List[str] = Field(
+        default_factory=lambda: ["quick10", "zipbasket", "megamart", "bulkbarn", "cornerstore", "channel3"]
+    )
     block: List[str] = Field(default_factory=list)
+
 
 class ItemRules(BaseModel):
     allow_untracked: bool = False
+
 
 class AnomalyRules(BaseModel):
     price_spike_pct: float = 30.0
     max_qty_multiple: float = 2.0
     duplicate_window_hours: int = 12
 
+
 class MandateBody(BaseModel):
     version: int = 1
     currency: str = "USD"
     kill_switch: bool = False
     limits: MandateLimits = Field(default_factory=MandateLimits)
-    category_budgets: Dict[str, float] = Field(default_factory=lambda: {
-        "grocery": 250.0,
-        "supplies": 80.0,
-        "fitness": 100.0
-    })
+    category_budgets: Dict[str, float] = Field(
+        default_factory=lambda: {
+            "grocery": 250.0,
+            "supplies": 80.0,
+            "fitness": 100.0,
+        }
+    )
     merchants: MerchantRules = Field(default_factory=MerchantRules)
     items: ItemRules = Field(default_factory=ItemRules)
     anomaly: AnomalyRules = Field(default_factory=AnomalyRules)
     approval_expiry_minutes: int = 30
+
 
 class Verdict(BaseModel):
     result: VerdictResult
     reasons: List[str]
     rule_ids: List[str]
     mandate_version: int
+
 
 class KillSwitchRequest(BaseModel):
     active: bool
@@ -107,12 +123,25 @@ class KillSwitchRequest(BaseModel):
 # --- Orders & Offers Types ---
 UrgencyClass = Literal["URGENT", "ROUTINE", "PLANNED"]
 OrderState = Literal[
-    "DRAFT", "QUOTED", "DECIDED", 
-    "PENDING_APPROVAL", "APPROVED", "REJECTED", "EXPIRED", 
-    "AUTHORIZED", "PLACED", "CAPTURED", 
-    "IN_TRANSIT", "DELIVERED", "CLOSED", 
-    "PAYMENT_FAILED", "MERCHANT_FAILED", "VOIDED", "REFUNDED"
+    "DRAFT",
+    "QUOTED",
+    "DECIDED",
+    "PENDING_APPROVAL",
+    "APPROVED",
+    "REJECTED",
+    "EXPIRED",
+    "AUTHORIZED",
+    "PLACED",
+    "CAPTURED",
+    "IN_TRANSIT",
+    "DELIVERED",
+    "CLOSED",
+    "PAYMENT_FAILED",
+    "MERCHANT_FAILED",
+    "VOIDED",
+    "REFUNDED",
 ]
+
 
 class Offer(BaseModel):
     id: str
@@ -133,6 +162,7 @@ class Offer(BaseModel):
     reliability: float = 0.95
     fetched_at: str
 
+
 class DecisionScoreBreakdown(BaseModel):
     offer_id: str
     merchant_id: str
@@ -141,6 +171,7 @@ class DecisionScoreBreakdown(BaseModel):
     rating_score: float
     fit_score: float
     total_score: float
+
 
 class Decision(BaseModel):
     id: str
@@ -154,6 +185,7 @@ class Decision(BaseModel):
     explanation: str
     created_at: str
 
+
 class OrderIntentCreate(BaseModel):
     item_id: Optional[str] = None
     item_name: str
@@ -162,6 +194,7 @@ class OrderIntentCreate(BaseModel):
     urgency_hint: Optional[str] = None
     rule_id: Optional[str] = None
     idempotency_key: Optional[str] = None
+
 
 class OrderIntentResponse(BaseModel):
     id: str
@@ -176,6 +209,7 @@ class OrderIntentResponse(BaseModel):
     needed_by: str
     state: OrderState
     created_at: str
+
 
 class Order(BaseModel):
     id: str
@@ -194,6 +228,7 @@ class Order(BaseModel):
     created_at: str
     delivered_at: Optional[str] = None
 
+
 class OrderApprovalAction(BaseModel):
     action: Literal["approve", "reject"]
     reason: Optional[str] = None
@@ -202,6 +237,7 @@ class OrderApprovalAction(BaseModel):
 # --- Wallet & Ledger Types ---
 AccountType = Literal["available", "held", "spent"]
 LedgerRefType = Literal["top_up", "reserve", "settle", "release", "refund"]
+
 
 class LedgerEntry(BaseModel):
     id: str
@@ -212,6 +248,7 @@ class LedgerEntry(BaseModel):
     ref_id: str
     idempotency_key: str
     created_at: str
+
 
 class WalletSummary(BaseModel):
     available_balance: float
@@ -226,6 +263,7 @@ class WalletSummary(BaseModel):
     monthly_cap: float
     kill_switch: bool
 
+
 class TopUpRequest(BaseModel):
     amount: float
     currency: str = "USD"
@@ -234,10 +272,17 @@ class TopUpRequest(BaseModel):
 
 # --- Conversational Agent Types ---
 class CardPayload(BaseModel):
-    card_type: Literal["order_preview", "rule_created", "approval_needed", "order_status", "decision_explanation"]
+    card_type: Literal[
+        "order_preview",
+        "rule_created",
+        "approval_needed",
+        "order_status",
+        "decision_explanation",
+    ]
     title: str
     subtitle: Optional[str] = None
     data: Dict[str, Any]
+
 
 class ChatMessage(BaseModel):
     id: str
@@ -245,6 +290,7 @@ class ChatMessage(BaseModel):
     content: str
     cards: Optional[List[CardPayload]] = None
     timestamp: str
+
 
 class ChatRequest(BaseModel):
     message: str

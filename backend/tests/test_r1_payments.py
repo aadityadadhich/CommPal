@@ -1,12 +1,17 @@
+import hmac
+import hashlib
 import pytest
-from decimal import Decimal
 from backend.app.db.database import SessionLocal, init_db
-from backend.r1_payments_wallet.models import Payment, PaymentEvent
-from backend.r1_payments_wallet.services import (
-    create_payment, cancel_payment, process_provider_event, 
-    verify_webhook_signature, IdempotencyConflict, InvalidPaymentEvent
+from backend.app.wallet.models import Payment, PaymentEvent
+from backend.app.wallet.services import (
+    create_payment,
+    cancel_payment,
+    process_provider_event,
+    verify_webhook_signature,
+    IdempotencyConflict,
 )
 from backend.app.config import settings
+
 
 @pytest.fixture(autouse=True)
 def db_session():
@@ -18,6 +23,7 @@ def db_session():
     yield db
     db.close()
 
+
 def test_milind_create_payment_and_idempotency(db_session):
     # 1. Create payment
     pay, created = create_payment(
@@ -26,7 +32,7 @@ def test_milind_create_payment_and_idempotency(db_session):
         currency="USD",
         user_id="user_123",
         description="Weekly grocery",
-        idempotency_key="idem-key-milind-001"
+        idempotency_key="idem-key-milind-001",
     )
     assert created is True
     assert pay.status == "pending"
@@ -39,7 +45,7 @@ def test_milind_create_payment_and_idempotency(db_session):
         currency="USD",
         user_id="user_123",
         description="Weekly grocery",
-        idempotency_key="idem-key-milind-001"
+        idempotency_key="idem-key-milind-001",
     )
     assert created_replayed is False
     assert pay_replayed.id == pay.id
@@ -52,22 +58,23 @@ def test_milind_create_payment_and_idempotency(db_session):
             currency="USD",
             user_id="user_123",
             description="Weekly grocery",
-            idempotency_key="idem-key-milind-001"
+            idempotency_key="idem-key-milind-001",
         )
+
 
 def test_milind_cancel_payment(db_session):
     pay, _ = create_payment(
         db=db_session,
         amount=15.00,
         currency="USD",
-        idempotency_key="idem-cancel-001"
+        idempotency_key="idem-cancel-001",
     )
     canceled = cancel_payment(db_session, pay.id)
     assert canceled.status == "canceled"
 
+
 def test_milind_webhook_signature_and_deduplication(db_session):
     raw_body = b'{"id":"evt-123","type":"payment.succeeded","amount":15.0}'
-    import hmac, hashlib
     secret = settings.SECRET_KEY
     sig = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
 
@@ -81,7 +88,7 @@ def test_milind_webhook_signature_and_deduplication(db_session):
         db=db_session,
         amount=50.00,
         currency="USD",
-        idempotency_key="idem-webhook-001"
+        idempotency_key="idem-webhook-001",
     )
 
     # Process webhook event once
@@ -91,8 +98,8 @@ def test_milind_webhook_signature_and_deduplication(db_session):
         payload={
             "id": "evt-paypal-unique-001",
             "type": "payment.succeeded",
-            "payment_id": pay.id
-        }
+            "payment_id": pay.id,
+        },
     )
     assert success is True
 
@@ -107,7 +114,7 @@ def test_milind_webhook_signature_and_deduplication(db_session):
         payload={
             "id": "evt-paypal-unique-001",
             "type": "payment.succeeded",
-            "payment_id": pay.id
-        }
+            "payment_id": pay.id,
+        },
     )
     assert duplicate is False

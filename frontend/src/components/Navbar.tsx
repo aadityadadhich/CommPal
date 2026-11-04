@@ -2,8 +2,8 @@
 
 import React, { useState } from "react";
 import { 
-  ShieldCheck, ShieldAlert, Clock, RefreshCw, FastForward, 
-  Wallet, Zap, Activity 
+  ShieldCheck, ShieldAlert, Clock, RefreshCw, 
+  Zap, Activity 
 } from "lucide-react";
 import { ClockState, WalletSummary } from "@/lib/types";
 import { toggleKillSwitch, advanceClock, resetDemoScenario } from "@/lib/api";
@@ -92,7 +92,7 @@ export default function Navbar({ clockState, wallet, onRefresh }: NavbarProps) {
             </div>
           </div>
 
-          {/* Controls: Clock + Sandbox Badge + Kill Switch */}
+          {/* Controls: Clock + Ollama & Sandbox Badges + Kill Switch */}
           <div className="flex items-center flex-wrap gap-2.5">
             {/* Virtual Clock Display */}
             <div className="flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700 text-xs">
@@ -127,6 +127,13 @@ export default function Navbar({ clockState, wallet, onRefresh }: NavbarProps) {
                   <RefreshCw className="w-3 h-3" />
                 </button>
               </div>
+            </div>
+
+            {/* Ollama qwen2.5:7b Provider Chip */}
+            <div className="hidden md:flex items-center space-x-1.5 bg-indigo-950/40 border border-indigo-800/60 text-indigo-300 px-3 py-1.5 rounded-lg text-xs">
+              <Zap className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Ollama (qwen2.5:7b)</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
             </div>
 
             {/* Sandbox Provider Chip */}
