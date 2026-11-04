@@ -1,0 +1,24 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: commpal-backend:local
+    container_name: commpal-backend
+    ports:
+      # Localhost only: the API has no login yet, so don't expose it to your network.
+      - "127.0.0.1:8000:8000"
+    environment:
+      # Forces the database onto the persistent volume, even if a .env file sets another path.
+      DATABASE_URL: sqlite:////data/commpal.db
+    env_file:
+      # Optional. Put GEMINI_API_KEY or PayPal sandbox keys in a root .env (already git-ignored).
+      - path: .env
+        required: false
+    volumes:
+      - commpal-data:/data
+    restart: unless-stopped
+
+volumes:
+  commpal-data:
+  
