@@ -1,3 +1,4 @@
+import os
 import json
 import uuid
 from typing import List, Dict, Any, Optional
@@ -5,6 +6,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, HTTPException, Query, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from backend.app.config import settings
@@ -567,3 +570,84 @@ def health_check(db: Session = Depends(get_db)):
 async def internal_tick(db: Session = Depends(get_db)):
     res = await tick_worker.run_tick(db)
     return res
+
+
+# 11. Live .env Configuration Endpoints
+@app.get("/api/config/env")
+def get_env_config():
+    return {
+        "PAYPAL_MODE": settings.PAYPAL_MODE,
+        "PAYPAL_CLIENT_ID": settings.PAYPAL_CLIENT_ID or "",
+        "PAYPAL_CLIENT_SECRET": settings.PAYPAL_CLIENT_SECRET or "",
+        "PAYPAL_WEBHOOK_ID": settings.PAYPAL_WEBHOOK_ID or "",
+        "LLM_PROVIDER": settings.LLM_PROVIDER,
+        "OLLAMA_BASE_URL": settings.OLLAMA_BASE_URL,
+        "OLLAMA_MODEL": settings.OLLAMA_MODEL,
+        "GEMINI_API_KEY": settings.GEMINI_API_KEY or "",
+        "CHANNEL3_API_KEY": settings.CHANNEL3_API_KEY or "",
+    }
+
+
+@app.post("/api/config/env")
+def update_env_config(body: Dict[str, Any]):
+    allowed_keys = [
+        "PAYPAL_MODE",
+        "PAYPAL_CLIENT_ID",
+        "PAYPAL_CLIENT_SECRET",
+        "PAYPAL_WEBHOOK_ID",
+        "LLM_PROVIDER",
+        "OLLAMA_BASE_URL",
+        "OLLAMA_MODEL",
+        "GEMINI_API_KEY",
+        "CHANNEL3_API_KEY",
+    ]
+    for key in allowed_keys:
+        if key in body and body[key] is not None:
+            val = str(body[key]).strip()
+            setattr(settings, key, val if val != "" else None)
+
+    env_lines = [
+        "# ============================================================================",
+        "# CommPal — Root Environment & API Keys Configuration (.env)",
+        "# ============================================================================",
+        f"PROJECT_NAME={settings.PROJECT_NAME}",
+        f"DATABASE_URL={settings.DATABASE_URL}",
+        "",
+        "# 1. PayPal REST API v2 Credentials",
+        f"PAYPAL_MODE={settings.PAYPAL_MODE or 'mock'}",
+        f"PAYPAL_CLIENT_ID={settings.PAYPAL_CLIENT_ID or ''}",
+        f"PAYPAL_CLIENT_SECRET={settings.PAYPAL_CLIENT_SECRET or ''}",
+        f"PAYPAL_WEBHOOK_ID={settings.PAYPAL_WEBHOOK_ID or ''}",
+        f"PAYPAL_API_BASE={settings.PAYPAL_API_BASE}",
+        "",
+        "# 2. Conversational AI / LLM Configuration",
+        f"LLM_PROVIDER={settings.LLM_PROVIDER or 'ollama'}",
+        f"OLLAMA_BASE_URL={settings.OLLAMA_BASE_URL or 'http://127.0.0.1:11434'}",
+        f"OLLAMA_MODEL={settings.OLLAMA_MODEL or 'qwen2.5:7b'}",
+        f"GEMINI_API_KEY={settings.GEMINI_API_KEY or ''}",
+        f"GEMINI_MODEL={settings.GEMINI_MODEL or 'gemini-2.5-flash'}",
+        "",
+        "# 3. Optional: Channel3 Live Product Search SDK",
+        f"CHANNEL3_API_KEY={settings.CHANNEL3_API_KEY or ''}",
+        "",
+        "# 4. Security & Internal Signing",
+        f"SECRET_KEY={settings.SECRET_KEY}",
+        f"INTERNAL_TICK_TOKEN={settings.INTERNAL_TICK_TOKEN}",
+        "",
+    ]
+    env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(env_lines))
+
+    return {"success": True, "config": get_env_config()}
+
+
+# 12. Serve Pure HTML/CSS/JS Frontend on Root (http://127.0.0.1:8000/)
+WEB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "web"))
+if os.path.isdir(WEB_DIR):
+    @app.get("/")
+    def serve_index():
+        return FileResponse(os.path.join(WEB_DIR, "index.html"))
+
+    app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
+
