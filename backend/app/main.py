@@ -11,6 +11,7 @@ from backend.app.config import settings
 from backend.app.db.database import get_db, SessionLocal, init_db
 from backend.app.db.seed import seed_week_with_asha
 from backend.app.db.models import (
+    RuleModel,
     OrderModel,
     OrderIntentModel,
     DecisionModel,
@@ -22,6 +23,7 @@ from backend.app.contracts.schemas import (
     ItemCreate,
     StockUpdateRequest,
     ItemResponse,
+    OrderIntentCreate,
     OrderApprovalAction,
     MandateBody,
     KillSwitchRequest,
@@ -78,7 +80,7 @@ app.add_middleware(
 )
 
 
-# 1. Chat & Conversational Agent (Ollama qwen2.5:7b + Gemini + Deterministic Fallback)
+# 1. Chat & Conversational Agent
 @app.post("/api/chat", response_model=ChatMessage)
 async def chat_endpoint(req: ChatRequest, db: Session = Depends(get_db)):
     msg = await shopping_agent.process_chat(
@@ -98,20 +100,69 @@ def get_items(db: Session = Depends(get_db)):
 @app.post("/api/items", response_model=Dict[str, Any])
 def create_item(item_in: ItemCreate, db: Session = Depends(get_db)):
     item = inventory_service.create_item(db, item_in)
-    return {"success": True, "item_id": item.id}
+    # Create an optional depletion rule if threshold_days > 0
+    rule_id = f"rule-depletion-{item.id}"
+    existing_rule = db.query(RuleModel).filter(RuleModel.id == rule_id).first()
+    if not existing_rule:
+        db.add(
+            RuleModel(
+                id=rule_id,
+                item_id=item.id,
+                type="depletion",
+                params_json=json.dumps({"threshold_days": item.threshold_days}),
+                qty=item.reorder_qty,
+                active=True,
+                created_at=clock.now().isoformat(),
+            )
+        )
+        db.commit()
+    return {"success": True, "item_id": item.id, "name": item.name}
 
 
 @app.post("/api/items/{item_id}/stock", response_model=Dict[str, Any])
-def update_item_stock(item_id: str, req: StockUpdateRequest, db: Session = Depends(get_db)):
-    item = inventory_service.update_stock(db, item_id, req)
+async def update_item_stock(item_id: str, req: StockUpdateRequest, db: Session = Depends(get_db)):
+    try:
+        item = inventory_service.update_stock(db, item_id, req)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
     cur_stock, doc, conf, _ = inventory_service.calculate_stock_and_cover(item, clock.now())
+    triggered_order: Optional[Dict[str, Any]] = None
+
+    # If stock dropped below or equal to threshold (or marked finished), automatically evaluate depletion purchase
+    if req.mode == "finished" or cur_stock <= 0 or doc <= item.threshold_days:
+        depletion_rule = (
+            db.query(RuleModel)
+            .filter(RuleModel.item_id == item.id, RuleModel.active == True)
+            .first()
+        )
+        if depletion_rule or req.mode == "finished":
+            intent_in = OrderIntentCreate(
+                item_id=item.id,
+                item_name=item.name,
+                qty=item.reorder_qty,
+                source="depletion",
+                rule_id=depletion_rule.id if depletion_rule else None,
+                urgency_hint="urgent" if cur_stock <= 0 else "routine",
+            )
+            triggered_order = await purchase_pipeline.request_purchase(db, intent_in, actor="depletion_monitor")
+
     return {
         "success": True,
         "item_id": item.id,
+        "item_name": item.name,
         "stock_qty": cur_stock,
         "days_of_cover": doc,
         "stock_confidence": conf,
+        "triggered_order": triggered_order,
     }
+
+
+@app.post("/api/orders/purchase", response_model=Dict[str, Any])
+async def direct_purchase_endpoint(intent_in: OrderIntentCreate, db: Session = Depends(get_db)):
+    """Direct 1-click purchase proposal from the UI Inventory or Dashboard."""
+    res = await purchase_pipeline.request_purchase(db, intent_in, actor="user")
+    return res
 
 
 # 3. Orders & Decisions (N+1 Query Eliminated)
@@ -162,14 +213,20 @@ def get_order_detail(order_id: str, db: Session = Depends(get_db)):
             "id": ord_row.id,
             "merchant_name": ord_row.merchant_name,
             "item_name": ord_row.item_name,
+            "qty": ord_row.qty,
+            "merchant_order_ref": ord_row.merchant_order_ref,
             "amount": ord_row.amount,
+            "currency": ord_row.currency,
             "state": ord_row.state,
+            "eta_minutes": ord_row.eta_minutes,
             "paypal_auth_id": ord_row.paypal_auth_id,
             "paypal_capture_id": ord_row.paypal_capture_id,
             "created_at": ord_row.created_at,
+            "delivered_at": ord_row.delivered_at,
         },
         "decision": {
             "explanation": dec_row.explanation if dec_row else None,
+            "weights": json.loads(dec_row.weights_json) if dec_row and dec_row.weights_json else {},
             "score_breakdown": json.loads(dec_row.score_breakdown_json) if dec_row else [],
             "filtered_out": json.loads(dec_row.filtered_out_json) if dec_row else {},
         },
@@ -229,6 +286,14 @@ async def handle_order_approval(intent_id: str, act: OrderApprovalAction, db: Se
         if intent:
             intent.state = "REJECTED"
         db.commit()
+        append_audit_event(
+            db=db,
+            actor="user",
+            event_type="ORDER_REJECTED",
+            entity_type="intent",
+            entity_id=intent_id,
+            payload={"reason": act.reason or "User rejected approval request"},
+        )
         return {"success": True, "status": "REJECTED"}
 
 
@@ -246,6 +311,8 @@ def get_wallet(db: Session = Depends(get_db)):
 
 @app.post("/api/wallet/top-up")
 def wallet_top_up(req: TopUpRequest, db: Session = Depends(get_db)):
+    if req.amount <= 0:
+        raise HTTPException(status_code=400, detail="Top-up amount must be positive.")
     entry = ledger_service.top_up(db, req.amount, req.currency)
     append_audit_event(
         db=db,
@@ -253,9 +320,16 @@ def wallet_top_up(req: TopUpRequest, db: Session = Depends(get_db)):
         event_type="WALLET_TOP_UP",
         entity_type="wallet",
         entity_id=entry.id,
-        payload={"amount": req.amount, "currency": req.currency},
+        payload={"amount": req.amount, "currency": req.currency, "method": req.payment_method},
     )
-    return {"success": True, "top_up_amount": req.amount}
+    mandate, _ = purchase_pipeline.get_active_mandate(db)
+    summary = ledger_service.get_wallet_summary(
+        db=db,
+        daily_cap=mandate.limits.daily_cap,
+        monthly_cap=mandate.limits.monthly_cap,
+        kill_switch=mandate.kill_switch,
+    )
+    return {"success": True, "top_up_amount": req.amount, "wallet": summary}
 
 
 @app.post("/api/payments")
@@ -343,10 +417,10 @@ def update_mandate(new_body: MandateBody, db: Session = Depends(get_db)):
         event_type="MANDATE_UPDATED",
         entity_type="mandate",
         entity_id=str(new_version),
-        payload={"version": new_version},
+        payload={"version": new_version, "limits": new_body.limits.model_dump()},
         mandate_version=new_version,
     )
-    return {"success": True, "version": new_version}
+    return {"success": True, "version": new_version, "mandate": new_body.model_dump()}
 
 
 @app.post("/api/mandate/kill-switch")
@@ -373,7 +447,7 @@ def toggle_kill_switch(req: KillSwitchRequest, db: Session = Depends(get_db)):
 
 # 7. Audit Trail & Hash Chain Verification
 @app.get("/api/audit")
-def get_audit_trail(limit: int = 50, db: Session = Depends(get_db)):
+def get_audit_trail(limit: int = 100, db: Session = Depends(get_db)):
     entries = db.query(AuditLogModel).order_by(AuditLogModel.seq.desc()).limit(limit).all()
     return [
         {

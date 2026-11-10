@@ -1,14 +1,20 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { 
-  ShieldCheck, ShieldAlert, CheckCircle2, Lock, 
-  RefreshCw, FileText, Key 
+import {
+  ShieldAlert,
+  CheckCircle2,
+  Lock,
+  RefreshCw,
 } from "lucide-react";
 import { AuditEvent } from "@/lib/types";
 import { fetchAuditTrail, verifyAuditIntegrity } from "@/lib/api";
 
-export default function AuditTab() {
+interface AuditTabProps {
+  onNotify: (message: string, tone?: "success" | "warning" | "error" | "info") => void;
+}
+
+export default function AuditTab({ onNotify }: AuditTabProps) {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [verification, setVerification] = useState<{
     is_valid: boolean;
@@ -16,114 +22,142 @@ export default function AuditTab() {
     events_count: number;
   } | null>(null);
   const [verifying, setVerifying] = useState(false);
+  const [actorFilter, setActorFilter] = useState<string>("ALL");
 
   useEffect(() => {
-    loadAudit();
+    loadAudit(false);
   }, []);
 
-  const loadAudit = async () => {
-    try {
-      const data = await fetchAuditTrail();
-      setEvents(data);
-      handleVerify();
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleVerify = async () => {
+  const loadAudit = async (showToast: boolean = true) => {
     setVerifying(true);
     try {
-      const res = await verifyAuditIntegrity();
-      setVerification(res);
-    } catch (e) {
-      console.error(e);
+      const [data, ver] = await Promise.all([
+        fetchAuditTrail(),
+        verifyAuditIntegrity(),
+      ]);
+      setEvents(data);
+      setVerification(ver);
+      if (showToast) {
+        onNotify(
+          `${ver.message} (${ver.events_count} cryptographic events verified).`,
+          ver.is_valid ? "success" : "error"
+        );
+      }
+    } catch (e: any) {
+      onNotify(e.message || "Failed to verify audit trail", "error");
     } finally {
       setVerifying(false);
     }
   };
 
+  const filteredEvents = events.filter((e) =>
+    actorFilter === "ALL" ? true : e.actor === actorFilter
+  );
+
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-5">
+    <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-5 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800 pb-4">
         <div>
-          <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <Lock className="w-5 h-5 text-indigo-400" />
-            Cryptographic SHA-256 Hash-Chained Audit Trail
+          <h2 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+            <Lock className="w-4 h-4 text-[#0070ba]" />
+            Cryptographic SHA-256 Hash-Chained Audit Ledger
           </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Every user command, mandate verdict, PayPal authorization, and merchant order is appended to an immutable chain.
+          <p className="text-xs text-zinc-400 mt-0.5">
+            Every event digest commits to <code className="font-mono text-zinc-300">SHA256(prev_hash | seq | ts | actor | event_type | canonical_payload | mandate_version)</code>.
           </p>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           {verification && (
             <div
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-semibold border ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono border ${
                 verification.is_valid
-                  ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-400"
-                  : "bg-rose-950/40 border-rose-500/40 text-rose-400"
+                  ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-300"
+                  : "bg-rose-950/40 border-rose-800/60 text-rose-300"
               }`}
             >
               {verification.is_valid ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
               ) : (
-                <ShieldAlert className="w-4 h-4 text-rose-400" />
+                <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
               )}
-              <span>{verification.message}</span>
+              <span>
+                {verification.message} ({verification.events_count} blocks)
+              </span>
             </div>
           )}
 
           <button
-            onClick={handleVerify}
+            type="button"
+            onClick={() => loadAudit(true)}
             disabled={verifying}
-            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold border border-slate-700 flex items-center gap-2 transition-colors"
+            className="px-3.5 py-1.5 rounded-md bg-[#0070ba] hover:bg-[#005ea6] text-white text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${verifying ? "animate-spin" : ""}`} />
-            <span>Verify Integrity</span>
+            <span>Verify Hash Chain</span>
           </button>
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs font-mono">
-          <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800">
+      {/* Filter Bar */}
+      <div className="flex items-center gap-1 bg-zinc-950 border border-zinc-800 rounded-md p-0.5 w-fit text-xs">
+        {["ALL", "user", "agent", "scheduler", "system"].map((act) => (
+          <button
+            key={act}
+            type="button"
+            onClick={() => setActorFilter(act)}
+            className={`px-2.5 py-1 rounded font-mono text-[11px] transition-colors cursor-pointer ${
+              actorFilter === act
+                ? "bg-zinc-800 text-white font-medium"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            {act.toUpperCase()}
+          </button>
+        ))}
+      </div>
+
+      <div className="overflow-x-auto border border-zinc-800 rounded-md">
+        <table className="w-full text-left text-xs font-mono tabular-nums">
+          <thead className="bg-zinc-950 text-zinc-400 uppercase text-[11px] border-b border-zinc-800">
             <tr>
-              <th className="py-3 px-3">Seq</th>
-              <th className="py-3 px-3">Timestamp</th>
-              <th className="py-3 px-3">Actor</th>
-              <th className="py-3 px-3">Event Type</th>
-              <th className="py-3 px-3">Payload Summary</th>
-              <th className="py-3 px-3">Current Hash (SHA-256)</th>
+              <th className="py-2.5 px-3">Seq</th>
+              <th className="py-2.5 px-3">Timestamp</th>
+              <th className="py-2.5 px-3">Actor</th>
+              <th className="py-2.5 px-3">Event Type</th>
+              <th className="py-2.5 px-3">Canonical Payload</th>
+              <th className="py-2.5 px-3">Prev Hash &rarr; Current Hash</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800/60 font-mono">
-            {events.map((e) => (
-              <tr key={e.seq} className="hover:bg-slate-800/40 transition-colors">
-                <td className="py-3 px-3 text-slate-400">#{e.seq}</td>
-                <td className="py-3 px-3 text-slate-400">
-                  {new Date(e.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+          <tbody className="divide-y divide-zinc-800/70 bg-zinc-900/30">
+            {filteredEvents.map((e) => (
+              <tr key={e.seq} className="hover:bg-zinc-900/90 transition-colors">
+                <td className="py-2.5 px-3 text-zinc-400">#{e.seq}</td>
+                <td className="py-2.5 px-3 text-zinc-400">
+                  {new Date(e.ts).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                    hour12: false,
+                  })}
                 </td>
-                <td className="py-3 px-3">
-                  <span
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                      e.actor === "user"
-                        ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-                        : e.actor === "agent"
-                        ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
-                        : "bg-slate-700/50 text-slate-300"
-                    }`}
-                  >
+                <td className="py-2.5 px-3">
+                  <span className="px-1.5 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-[10px] text-zinc-300 uppercase">
                     {e.actor}
                   </span>
                 </td>
-                <td className="py-3 px-3 font-semibold text-white">{e.event_type}</td>
-                <td className="py-3 px-3 text-slate-300 max-w-xs truncate">
+                <td className="py-2.5 px-3 font-semibold text-zinc-100">
+                  {e.event_type}
+                </td>
+                <td className="py-2.5 px-3 text-zinc-300 max-w-md truncate">
                   {JSON.stringify(e.payload)}
                 </td>
-                <td className="py-3 px-3 text-slate-400">
-                  <span className="text-emerald-400 font-semibold">{e.hash.slice(0, 10)}</span>
-                  <span className="text-slate-600">...{e.hash.slice(-6)}</span>
+                <td className="py-2.5 px-3 text-[11px] text-zinc-400">
+                  <span className="text-zinc-500">{e.prev_hash.slice(0, 8)}</span>
+                  <span className="mx-1 text-zinc-600">&rarr;</span>
+                  <span className="text-emerald-400 font-semibold">
+                    {e.hash.slice(0, 12)}
+                  </span>
                 </td>
               </tr>
             ))}

@@ -94,3 +94,58 @@ def test_payments_and_webhook_api():
     })
     assert resp_webhook.status_code == 200
     assert resp_webhook.json()["received"] is True
+
+def test_stock_deplete_triggers_autonomous_order():
+    client = TestClient(app)
+    resp = client.post("/api/items/item-milk/stock", json={"mode": "finished"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["stock_qty"] == 0
+    assert data["triggered_order"] is not None
+    assert data["triggered_order"]["status"] == "ORDER_PLACED"
+
+def test_create_item_and_direct_purchase():
+    client = TestClient(app)
+    create_resp = client.post("/api/items", json={
+        "name": "Coffee 500g",
+        "category": "grocery",
+        "unit": "bag",
+        "stock_qty": 3,
+        "daily_use_rate": 0.25,
+        "threshold_days": 2.0,
+        "preferred_qty": 1,
+        "last_price": 12.40
+    })
+    assert create_resp.status_code == 200
+    created_item = create_resp.json()
+    assert created_item["name"] == "Coffee 500g"
+
+    order_resp = client.post("/api/orders/purchase", json={
+        "item_name": "Coffee 500g",
+        "qty": 1,
+        "urgency": "normal",
+        "trigger": "user_chat"
+    })
+    assert order_resp.status_code == 200
+    assert order_resp.json()["status"] == "ORDER_PLACED"
+
+def test_chat_nlu_multi_item_and_conversational():
+    client = TestClient(app)
+    # 1. Greeting should not trigger an order
+    hi_resp = client.post("/api/chat", json={"message": "hi"})
+    assert hi_resp.status_code == 200
+    assert "CommPal" in hi_resp.json()["content"]
+
+    # 2. Price comparison for Coffee
+    cmp_resp = client.post("/api/chat", json={"message": "Compare prices for Coffee"})
+    assert cmp_resp.status_code == 200
+    cards = cmp_resp.json()["cards"]
+    assert len(cards) == 1
+    assert len(cards[0]["data"]["offers"]) >= 2
+
+def test_wallet_top_up_endpoint():
+    client = TestClient(app)
+    resp = client.post("/api/wallet/top-up", json={"amount": 50.0})
+    assert resp.status_code == 200
+    assert resp.json()["wallet"]["available_balance"] == 250.00
+

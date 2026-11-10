@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CommPal - Autonomous Agentic Commerce & Aggregation",
-  description: "PayPal AI Hackathon - Safe Autonomous Purchasing with Deterministic Mandate and Sandboxed E-Wallet",
+  title: "CommPal | Autonomous Agentic Commerce & PayPal Treasury",
+  description: "PayPal AI Hackathon — Delegated Autonomous Purchasing, Multi-Merchant SLA Routing, and Sandboxed E-Wallet Settlement",
 };
 
 export default function RootLayout({
@@ -25,9 +25,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
     >
-      <body className="min-h-full flex flex-col bg-slate-950 text-slate-100">{children}</body>
+      <body className="min-h-full flex flex-col bg-[#09090b] text-zinc-100 selection:bg-[#0070ba] selection:text-white">
+        {children}
+      </body>
     </html>
   );
 }

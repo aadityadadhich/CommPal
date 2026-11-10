@@ -165,10 +165,15 @@ class PayPalSandboxProvider:
 
     async def authorize(self, amount: float, currency: str, ref: str, idem_key: str) -> Authorization:
         token = await self._get_access_token()
-        headers = {
+        create_headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
-            "PayPal-Request-Id": idem_key,
+            "PayPal-Request-Id": f"{idem_key}-create",
+        }
+        auth_headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "PayPal-Request-Id": f"{idem_key}-auth",
         }
         payload = {
             "intent": "AUTHORIZE",
@@ -179,12 +184,12 @@ class PayPalSandboxProvider:
             }],
         }
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(f"{self.api_base}/v2/checkout/orders", headers=headers, json=payload)
+            resp = await client.post(f"{self.api_base}/v2/checkout/orders", headers=create_headers, json=payload)
             resp.raise_for_status()
             order_id = resp.json()["id"]
 
             auth_resp = await client.post(
-                f"{self.api_base}/v2/checkout/orders/{order_id}/authorize", headers=headers
+                f"{self.api_base}/v2/checkout/orders/{order_id}/authorize", headers=auth_headers
             )
             auth_resp.raise_for_status()
             auth_data = auth_resp.json()

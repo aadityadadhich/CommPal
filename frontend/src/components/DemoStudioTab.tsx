@@ -1,24 +1,38 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { 
-  Sliders, FastForward, RotateCcw, AlertTriangle, 
-  Flame, CheckCircle2, Video, Zap 
+import {
+  FastForward,
+  RotateCcw,
+  Flame,
+  Play,
 } from "lucide-react";
-import { advanceClock, resetDemoScenario, fetchChaos, toggleChaosFlag } from "@/lib/api";
+import {
+  advanceClock,
+  resetDemoScenario,
+  fetchChaos,
+  toggleChaosFlag,
+  sendChatMessage,
+} from "@/lib/api";
+import { TabType } from "@/app/page";
 
 interface DemoStudioTabProps {
-  onRefresh: () => void;
+  onRefresh: () => Promise<void> | void;
+  onNotify: (message: string, tone?: "success" | "warning" | "error" | "info") => void;
+  onNavigate: (tab: TabType) => void;
 }
 
-export default function DemoStudioTab({ onRefresh }: DemoStudioTabProps) {
+export default function DemoStudioTab({
+  onRefresh,
+  onNotify,
+  onNavigate,
+}: DemoStudioTabProps) {
   const [chaos, setChaos] = useState<any>({
     out_of_stock_items: [],
     down_merchants: [],
     payment_failure: false,
   });
-  const [advancing, setAdvancing] = useState(false);
-  const [notification, setNotification] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     loadChaos();
@@ -28,188 +42,306 @@ export default function DemoStudioTab({ onRefresh }: DemoStudioTabProps) {
     try {
       const data = await fetchChaos();
       setChaos(data);
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // ignore
     }
   };
 
   const handleAdvance = async (hours: number, days: number = 0) => {
-    setAdvancing(true);
+    setBusy(true);
     try {
       const res = await advanceClock(hours, days);
-      setNotification(
-        `Advanced clock by ${days > 0 ? `${days} day(s)` : `${hours} hour(s)`}! ` +
-        `Fired: ${res.tick_result.rules_fired} rule(s), ${res.tick_result.depletions_fired} depletion(s).`
+      await onRefresh();
+      const tr = res.tick_result || {};
+      onNotify(
+        `Advanced Virtual Clock +${days > 0 ? `${days}d` : `${hours}h`}: ` +
+          `${tr.rules_fired || 0} rule(s) fired, ${tr.depletions_fired || 0} depletion(s), ${tr.orders_delivered || 0} delivered.`,
+        "success"
       );
-      setTimeout(() => setNotification(null), 4000);
-      onRefresh();
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      onNotify(e.message || "Clock advance failed", "error");
     } finally {
-      setAdvancing(false);
+      setBusy(false);
     }
   };
 
   const handleReset = async () => {
+    setBusy(true);
     try {
       await resetDemoScenario();
-      setNotification("Reset complete: 'Week with Asha' scenario initialized ($200 wallet, 3 rules, clean audit log).");
-      setTimeout(() => setNotification(null), 4000);
       await loadChaos();
-      onRefresh();
-    } catch (e) {
-      console.error(e);
+      await onRefresh();
+      onNotify(
+        "Reset complete: 'Week with Asha' initialized ($200.00 wallet, 3 items, Mandate v1).",
+        "info"
+      );
+    } catch (e: any) {
+      onNotify(e.message || "Reset failed", "error");
+    } finally {
+      setBusy(false);
     }
   };
 
-  const toggleChaos = async (key: string, value: any) => {
+  const handleToggleChaos = async (key: string, value: any, label: string) => {
+    setBusy(true);
     try {
       const res = await toggleChaosFlag({ [key]: value });
       setChaos(res.chaos);
-      onRefresh();
-    } catch (e) {
-      console.error(e);
+      await onRefresh();
+      onNotify(`Chaos state updated: ${label}`, "warning");
+    } catch (e: any) {
+      onNotify(e.message || "Failed to toggle chaos flag", "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runLiveScenario = async (prompt: string, targetTab: TabType) => {
+    setBusy(true);
+    try {
+      const msg = await sendChatMessage(prompt);
+      await onRefresh();
+      onNotify(msg.content.slice(0, 140), "success");
+      onNavigate(targetTab);
+    } catch (e: any) {
+      onNotify(e.message || "Scenario execution failed", "error");
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
-    <div className="space-y-6">
-      {notification && (
-        <div className="p-4 rounded-xl bg-blue-950/60 border border-blue-500/40 text-blue-200 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
-          <CheckCircle2 className="w-4 h-4 text-blue-400" />
-          <span>{notification}</span>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Virtual Clock & Scenario Reset */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-          <h3 className="text-base font-bold text-white flex items-center gap-2">
-            <FastForward className="w-5 h-5 text-amber-400" />
-            Virtual Clock Time-Travel
-          </h3>
-          <p className="text-xs text-slate-400">
-            Fast-forward simulated time to verify that recurring rules (daily milk, monthly protein) and depletion triggers fire autonomously.
+    <div className="space-y-5">
+      {/* 1-Click Interactive Benchmark Scenarios */}
+      <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-5 space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+            <Play className="w-4 h-4 text-[#0070ba]" />
+            1-Click End-to-End Hackathon Benchmark Scenarios
+          </h2>
+          <p className="text-xs text-zinc-400 mt-0.5">
+            Execute live end-to-end backend pipelines and navigate directly to the resulting state.
           </p>
+        </div>
 
-          <div className="grid grid-cols-3 gap-2 pt-2">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+          <div className="p-4 rounded-md bg-zinc-950 border border-zinc-800 flex flex-col justify-between space-y-3">
+            <div>
+              <div className="font-mono text-[11px] text-[#0070ba] uppercase">
+                Scenario A · Urgent Quick-Commerce
+              </div>
+              <div className="text-xs font-semibold text-zinc-100 mt-1">
+                A4 Paper Stockout &rarr; Quick10 (18m ETA)
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                Sets A4 Paper stock to 0, derives URGENT SLA, filters out slow marketplaces (MegaMart 36h), and settles via PayPal Sandbox.
+              </p>
+            </div>
             <button
-              disabled={advancing}
-              onClick={() => handleAdvance(1)}
-              className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-mono text-xs font-semibold border border-slate-700 transition-colors"
+              type="button"
+              disabled={busy}
+              onClick={() => runLiveScenario("We're out of A4 paper", "orders")}
+              className="w-full py-2 px-3 rounded bg-[#0070ba] hover:bg-[#005ea6] disabled:opacity-50 text-white text-xs font-medium cursor-pointer"
             >
-              +1 Hour
-            </button>
-            <button
-              disabled={advancing}
-              onClick={() => handleAdvance(0, 1)}
-              className="py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-semibold shadow-lg shadow-blue-600/30 transition-colors"
-            >
-              +1 Day (Rule Fire)
-            </button>
-            <button
-              disabled={advancing}
-              onClick={() => handleAdvance(0, 7)}
-              className="py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-mono text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-colors"
-            >
-              +1 Week
+              Execute Urgent Paper Order
             </button>
           </div>
 
-          <div className="pt-3 border-t border-slate-800 flex justify-between items-center">
-            <span className="text-xs text-slate-400 font-medium">Re-seed Persona:</span>
+          <div className="p-4 rounded-md bg-zinc-950 border border-zinc-800 flex flex-col justify-between space-y-3">
+            <div>
+              <div className="font-mono text-[11px] text-amber-400 uppercase">
+                Scenario B · Mandate Guardrail
+              </div>
+              <div className="text-xs font-semibold text-zinc-100 mt-1">
+                Untracked WD-40 &rarr; Pauses for Human Approval
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                Proposes WD-40 purchase. Deterministic RULE_3_UNTRACKED_ITEM halts auto-settlement and queues human approval.
+              </p>
+            </div>
             <button
-              onClick={handleReset}
-              className="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition-colors"
+              type="button"
+              disabled={busy}
+              onClick={() => runLiveScenario("Order WD-40", "overview")}
+              className="w-full py-2 px-3 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-100 border border-zinc-700 text-xs font-medium cursor-pointer"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              Reset "Week with Asha"
+              Trigger WD-40 Approval Gate
             </button>
           </div>
-        </div>
 
-        {/* Chaos & Failure Injection */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-          <h3 className="text-base font-bold text-white flex items-center gap-2">
-            <Flame className="w-5 h-5 text-rose-400" />
-            Failure & Chaos Injection
-          </h3>
-          <p className="text-xs text-slate-400">
-            Inject real-world commerce anomalies to prove that CommPal safely handles merchant downtime and payment refusal.
-          </p>
-
-          <div className="space-y-3 pt-1 text-xs">
-            {/* Payment failure */}
-            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800">
-              <div>
-                <div className="font-semibold text-slate-200">Simulate PayPal Decline</div>
-                <div className="text-slate-500 text-[11px]">Forces authorization decline; confirms void & hold release</div>
+          <div className="p-4 rounded-md bg-zinc-950 border border-zinc-800 flex flex-col justify-between space-y-3">
+            <div>
+              <div className="font-mono text-[11px] text-emerald-400 uppercase">
+                Scenario C · Planned Marketplace
               </div>
-              <input
-                type="checkbox"
-                checked={chaos.payment_failure}
-                onChange={(e) => toggleChaos("payment_failure", e.target.checked)}
-                className="rounded border-slate-700 bg-slate-900 text-rose-600 focus:ring-0"
-              />
-            </div>
-
-            {/* Merchant Quick10 Down */}
-            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800">
-              <div>
-                <div className="font-semibold text-slate-200">Merchant Down: Quick10 (503 Error)</div>
-                <div className="text-slate-500 text-[11px]">Router seamlessly falls back to ZipBasket</div>
+              <div className="text-xs font-semibold text-zinc-100 mt-1">
+                Advance +1 Day &rarr; Scheduled Rules & Delivery
               </div>
-              <input
-                type="checkbox"
-                checked={chaos.down_merchants.includes("quick10")}
-                onChange={() => toggleChaos("down_merchant", "quick10")}
-                className="rounded border-slate-700 bg-slate-900 text-rose-600 focus:ring-0"
-              />
+              <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                Advances virtual clock by 24h, fires due recurring rules (daily milk / monthly protein), and delivers in-transit orders.
+              </p>
             </div>
-
-            {/* Out of stock paper */}
-            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800">
-              <div>
-                <div className="font-semibold text-slate-200">A4 Paper Stockout Across Quick-Stores</div>
-                <div className="text-slate-500 text-[11px]">Demonstrates stock depletion filter</div>
-              </div>
-              <input
-                type="checkbox"
-                checked={chaos.out_of_stock_items.includes("a4 paper")}
-                onChange={() => toggleChaos("out_of_stock_item", "a4 paper")}
-                className="rounded border-slate-700 bg-slate-900 text-rose-600 focus:ring-0"
-              />
-            </div>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                await handleAdvance(0, 1);
+                onNavigate("orders");
+              }}
+              className="w-full py-2 px-3 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-medium cursor-pointer"
+            >
+              Advance +1 Day & View Orders
+            </button>
           </div>
         </div>
       </div>
 
-      {/* 2:45 Demo Video Storyboard Cheat-Sheet */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-3">
-        <h3 className="text-sm font-bold text-white flex items-center gap-2">
-          <Video className="w-4 h-4 text-purple-400" />
-          Judge Walkthrough & Video Script Outline (2m 45s)
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
-          <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-            <span className="font-mono text-purple-400 font-bold block mb-1">0:00 - 0:30</span>
-            <span className="font-semibold text-white">The Trust Block</span>
-            <p className="text-slate-400 mt-1">Users want shopping automated, but won't hand AI an open credit card. CommPal solution: The agent proposes, mandate decides, wallet pays.</p>
+      {/* Time-Travel & Chaos Injection Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {/* Virtual Clock Controls */}
+        <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-5 space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+              <FastForward className="w-4 h-4 text-[#0070ba]" />
+              Virtual Time-Travel Controls
+            </h3>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Fast-forward the deterministic clock to test stock decay, approval expiration, and recurring schedules.
+            </p>
           </div>
-          <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-            <span className="font-mono text-purple-400 font-bold block mb-1">0:30 - 1:15</span>
-            <span className="font-semibold text-white">Rule Setup & Urgent Restock</span>
-            <p className="text-slate-400 mt-1">Asha types "I need milk daily, protein monthly, paper when it runs out." Later, paper depletes &rarr; Quick10 selected for fast delivery.</p>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => handleAdvance(1, 0)}
+              className="py-2 px-3 rounded bg-zinc-950 hover:bg-zinc-800 text-zinc-200 border border-zinc-800 font-mono text-xs cursor-pointer"
+            >
+              +1 Hour
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => handleAdvance(6, 0)}
+              className="py-2 px-3 rounded bg-zinc-950 hover:bg-zinc-800 text-zinc-200 border border-zinc-800 font-mono text-xs cursor-pointer"
+            >
+              +6 Hours
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => handleAdvance(0, 1)}
+              className="py-2 px-3 rounded bg-zinc-950 hover:bg-zinc-800 text-zinc-200 border border-zinc-800 font-mono text-xs cursor-pointer"
+            >
+              +1 Day
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => handleAdvance(0, 7)}
+              className="py-2 px-3 rounded bg-zinc-950 hover:bg-zinc-800 text-zinc-200 border border-zinc-800 font-mono text-xs cursor-pointer"
+            >
+              +7 Days
+            </button>
           </div>
-          <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-            <span className="font-mono text-purple-400 font-bold block mb-1">1:15 - 2:00</span>
-            <span className="font-semibold text-white">Time Travel & Depletion</span>
-            <p className="text-slate-400 mt-1">Advance clock by 1 day. Scheduler automatically dispatches the daily milk order at 7:00 AM with zero user prompt.</p>
+
+          <div className="pt-3 border-t border-zinc-800 flex items-center justify-between">
+            <span className="text-xs text-zinc-400">
+              Restore clean initial state:
+            </span>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={handleReset}
+              className="px-3 py-1.5 rounded bg-zinc-950 hover:bg-zinc-800 text-zinc-200 border border-zinc-800 text-xs font-medium flex items-center gap-1.5 cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset &ldquo;Week with Asha&rdquo;</span>
+            </button>
           </div>
-          <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-            <span className="font-mono text-purple-400 font-bold block mb-1">2:00 - 2:45</span>
-            <span className="font-semibold text-white">Kill Switch & Verification</span>
-            <p className="text-slate-400 mt-1">Toggle Kill Switch &rarr; spending frozen. Inspect cryptographic hash-chained audit log with 1-click verification.</p>
+        </div>
+
+        {/* Chaos & Fault Injection */}
+        <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-5 space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
+              <Flame className="w-4 h-4 text-rose-400" />
+              Fault & Chaos Injection
+            </h3>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Inject payment declines and merchant outages to verify automatic ledger rollback and failover routing.
+            </p>
+          </div>
+
+          <div className="space-y-2.5 text-xs">
+            <label className="flex items-center justify-between p-3 rounded bg-zinc-950 border border-zinc-800 cursor-pointer">
+              <div>
+                <div className="font-medium text-zinc-200">
+                  Simulate PayPal Authorization Decline
+                </div>
+                <div className="text-[11px] text-zinc-500">
+                  Verifies Held reservation is automatically released back to Available
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={Boolean(chaos.payment_failure)}
+                onChange={(e) =>
+                  handleToggleChaos(
+                    "payment_failure",
+                    e.target.checked,
+                    `PayPal Decline = ${e.target.checked}`
+                  )
+                }
+                className="rounded border-zinc-700 bg-zinc-900"
+              />
+            </label>
+
+            <label className="flex items-center justify-between p-3 rounded bg-zinc-950 border border-zinc-800 cursor-pointer">
+              <div>
+                <div className="font-medium text-zinc-200">
+                  Merchant Outage: Quick10 (HTTP 503)
+                </div>
+                <div className="text-[11px] text-zinc-500">
+                  Router automatically fails over to ZipBasket
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={Boolean(chaos.down_merchants?.includes("quick10"))}
+                onChange={() =>
+                  handleToggleChaos(
+                    "down_merchant",
+                    "quick10",
+                    "Toggled Quick10 merchant availability"
+                  )
+                }
+                className="rounded border-zinc-700 bg-zinc-900"
+              />
+            </label>
+
+            <label className="flex items-center justify-between p-3 rounded bg-zinc-950 border border-zinc-800 cursor-pointer">
+              <div>
+                <div className="font-medium text-zinc-200">
+                  Catalog Stockout: A4 Paper
+                </div>
+                <div className="text-[11px] text-zinc-500">
+                  Forces zero merchant stock for A4 paper across catalogs
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={Boolean(chaos.out_of_stock_items?.includes("a4 paper"))}
+                onChange={() =>
+                  handleToggleChaos(
+                    "out_of_stock_item",
+                    "a4 paper",
+                    "Toggled A4 Paper catalog stockout"
+                  )
+                }
+                className="rounded border-zinc-700 bg-zinc-900"
+              />
+            </label>
           </div>
         </div>
       </div>
