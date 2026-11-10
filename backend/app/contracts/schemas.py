@@ -50,7 +50,7 @@ class ItemUpdate(BaseModel):
 class StockUpdateRequest(BaseModel):
     mode: Literal["absolute", "delta", "finished"] = "absolute"
     qty: Optional[float] = 0.0
-    reason: Literal["user_said", "auto_consumption", "delivery", "correction"] = "user_said"
+    reason: str = "user_said"
 
 
 class ItemResponse(ItemBase):
@@ -278,6 +278,8 @@ class CardPayload(BaseModel):
         "approval_needed",
         "order_status",
         "decision_explanation",
+        "ai_reasoning",
+        "recipe_bundle",
     ]
     title: str
     subtitle: Optional[str] = None

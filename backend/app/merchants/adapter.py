@@ -99,6 +99,46 @@ class MockMerchant:
                 )
                 results.append(offer)
 
+        # Dynamic Catalog Synthesizer for open-ended culinary ingredients & custom items
+        if not results and query_clean and query_clean not in chaos_flags["out_of_stock_items"]:
+            seed_val = sum(ord(c) for c in query_clean)
+            base_price = round(2.99 + (seed_val % 650) / 100.0, 2)  # $2.99 - $9.49 realistic grocery/item price
+            profiles = {
+                "quick10": {"mult": 1.10, "fee": 1.49, "eta": 16, "rating": 4.8, "brand": "FreshExpress"},
+                "zipbasket": {"mult": 1.04, "fee": 0.99, "eta": 26, "rating": 4.7, "brand": "ZipSelect"},
+                "cornerstore": {"mult": 0.96, "fee": 0.79, "eta": 70, "rating": 4.5, "brand": "LocalMarket"},
+                "megamart": {"mult": 0.85, "fee": 0.00, "eta": 1440, "rating": 4.7, "brand": "MegaValue"},
+                "bulkbarn": {"mult": 0.82, "fee": 0.00, "eta": 2160, "rating": 4.6, "brand": "BulkChoice"},
+            }
+            prof = profiles.get(self.id, {"mult": 1.0, "fee": 0.99, "eta": 30, "rating": 4.6, "brand": "Standard"})
+            multiplier = chaos_flags["price_spikes"].get(query_clean, 1.0)
+            unit_price = round(base_price * prof["mult"] * multiplier, 2)
+            delivery_fee = prof["fee"]
+            landed_price = round(unit_price * qty + delivery_fee, 2)
+            sku_code = "".join(ch for ch in query_clean.upper() if ch.isalnum())[:6] or "ITEM"
+
+            results.append(
+                Offer(
+                    id=f"off-{self.id}-{sku_code}-{uuid.uuid4().hex[:6]}",
+                    intent_id="",
+                    merchant_id=self.id,
+                    merchant_name=self.name,
+                    sku=f"{self.id[:2].upper()}-{sku_code}-1",
+                    title=f"{prof['brand']} {query.strip().title()}",
+                    brand=prof["brand"],
+                    size=spec.size or "standard",
+                    unit_price=unit_price,
+                    delivery_fee=delivery_fee,
+                    landed_price=landed_price,
+                    currency="USD",
+                    stock_qty=20,
+                    eta_minutes=prof["eta"],
+                    rating=prof["rating"],
+                    reliability=self.reliability,
+                    fetched_at=clock.now().isoformat(),
+                )
+            )
+
         return results
 
     async def place_order(self, offer: Offer, qty: float, idem_key: str) -> MerchantOrder:

@@ -185,22 +185,74 @@ class OllamaAgentClient:
 
 class GeminiAgentClient:
     def __init__(self):
-        self.api_key = settings.GEMINI_API_KEY
-        self.client = None
         self.ollama = OllamaAgentClient()
-        if self.api_key:
-            try:
-                self.client = genai.Client(api_key=self.api_key)
-            except Exception as e:
-                logger.warning(f"Could not initialize Gemini Client: {e}")
 
     def is_gemini_available(self) -> bool:
-        return bool(self.client and self.api_key)
+        return bool(settings.GEMINI_API_KEY and settings.GEMINI_API_KEY.strip())
 
     def is_available(self) -> bool:
         if settings.LLM_PROVIDER == "ollama" and self.ollama.is_available():
             return True
         return self.is_gemini_available()
+
+    async def decompose_goal_with_llm(self, user_message: str) -> Optional[Dict[str, Any]]:
+        """
+        Ask Ollama (qwen2.5:7b) or Gemini to decompose a complex user goal/recipe/event
+        into a structured JSON plan with reasoning steps and required items.
+        """
+        prompt = (
+            "You are CommPal's autonomous shopping planner. The user said:\n"
+            f'"{user_message}"\n\n'
+            "Return ONLY valid JSON with this exact schema:\n"
+            "{\n"
+            '  "goal_title": "Short title of dish or project",\n'
+            '  "reasoning_steps": ["Step 1...", "Step 2...", "Step 3..."],\n'
+            '  "items": [\n'
+            '    {"name": "Specific Item Name with Size (e.g. Fresh Paneer 200g)", "category": "grocery", "unit": "pack", "qty": 1}\n'
+            "  ]\n"
+            "}\n"
+            "Include 4 to 6 essential items. Do not wrap in markdown."
+        )
+        # 1. Try Ollama
+        if settings.LLM_PROVIDER == "ollama" and self.ollama.is_available():
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    resp = await client.post(
+                        f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/generate",
+                        json={
+                            "model": settings.OLLAMA_MODEL,
+                            "prompt": prompt,
+                            "format": "json",
+                            "stream": False,
+                            "options": {"temperature": 0.1},
+                        },
+                    )
+                    if resp.status_code == 200:
+                        raw = resp.json().get("response", "{}")
+                        parsed = json.loads(raw)
+                        if isinstance(parsed, dict) and parsed.get("items"):
+                            return parsed
+            except Exception as e:
+                logger.debug(f"Ollama goal decomposition skipped: {e}")
+
+        # 2. Try Gemini if configured
+        if self.is_gemini_available():
+            try:
+                client = genai.Client(api_key=settings.GEMINI_API_KEY.strip())
+                response = client.models.generate_content(
+                    model=settings.GEMINI_MODEL,
+                    contents=prompt,
+                )
+                text = (response.text or "").strip()
+                if text.startswith("```"):
+                    text = text.strip("`").replace("json", "", 1).strip()
+                parsed = json.loads(text)
+                if isinstance(parsed, dict) and parsed.get("items"):
+                    return parsed
+            except Exception as e:
+                logger.debug(f"Gemini goal decomposition skipped: {e}")
+
+        return None
 
     @staticmethod
     def _fallback_parse(user_message: str) -> Dict[str, Any]:
@@ -260,7 +312,8 @@ class GeminiAgentClient:
                 tools=[{"function_declarations": GEMINI_TOOLS_SCHEMA}],
             )
 
-            response = self.client.models.generate_content(
+            client = genai.Client(api_key=settings.GEMINI_API_KEY.strip())
+            response = client.models.generate_content(
                 model=settings.GEMINI_MODEL,
                 contents=contents,
                 config=config,

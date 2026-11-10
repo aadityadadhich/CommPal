@@ -104,11 +104,11 @@
 
         <!-- 1-Click Everyday Actions -->
         <div class="chip-bar">
-          <button class="chip" onclick="sendChat('We ran out of A4 paper')">📄 We ran out of A4 Paper</button>
-          <button class="chip" onclick="sendChat('Buy 2 Coffee')">☕ Buy 2 Coffee</button>
-          <button class="chip" onclick="sendChat('Order WD-40')">🛠️ Buy WD-40 (Needs Approval)</button>
+          <button class="chip" onclick="sendChat('I need to make paneer butter masala, order all ingredients')">🍲 Make Paneer Butter Masala</button>
+          <button class="chip" onclick="sendChat('I want to cook pasta alfredo, order all ingredients')">🍝 Make Pasta Alfredo</button>
+          <button class="chip" onclick="sendChat('We ran out of A4 paper')">📄 Out of A4 Paper</button>
+          <button class="chip" onclick="sendChat('Order WD-40')">🛠️ Buy WD-40 (Approval Gate)</button>
           <button class="chip" onclick="sendChat('Compare prices for Whole Milk')">🔍 Compare Milk Prices</button>
-          <button class="chip" onclick="sendChat('I need milk daily and protein powder monthly')">📅 Set Auto-Restock Rules</button>
         </div>
 
         <!-- Chat Input -->
@@ -116,7 +116,7 @@
           <input
             id="chat-input"
             class="input"
-            placeholder="Type anything: 'Buy eggs', 'Compare coffee prices', 'Check wallet'..."
+            placeholder="Ask anything: 'I need to make paneer butter masala, order all ingredients', 'Cook biryani', 'Buy coffee'..."
             autocomplete="off"
           />
           <button type="submit" id="send-btn" class="btn btn-blue" style="padding:0 18px;">Send</button>

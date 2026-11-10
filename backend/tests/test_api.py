@@ -149,3 +149,21 @@ def test_wallet_top_up_endpoint():
     assert resp.status_code == 200
     assert resp.json()["wallet"]["available_balance"] == 250.00
 
+
+def test_agentic_recipe_paneer_butter_masala_decomposition():
+    client = TestClient(app)
+    resp = client.post(
+        "/api/chat",
+        json={"message": "i need to make paneer butter masala , order all ingredients"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "Paneer Butter Masala" in data["content"]
+    cards = data["cards"]
+    assert len(cards) == 2
+    assert cards[0]["card_type"] == "ai_reasoning"
+    assert cards[1]["card_type"] == "recipe_bundle"
+    assert cards[1]["data"]["ordered_count"] == 5
+    assert cards[1]["data"]["total_cost"] > 0
+
+

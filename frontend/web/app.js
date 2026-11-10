@@ -317,6 +317,79 @@ function renderChat() {
 
 function renderChatCard(card) {
   const d = card.data || {};
+
+  if (card.card_type === "ai_reasoning" && Array.isArray(d.steps)) {
+    const stepsHtml = d.steps
+      .map(
+        (step) => `
+        <div style="font-size:12px; color:#d1d5db; padding:4px 0; border-bottom:1px dashed rgba(255,255,255,0.06);">
+          ${md(step)}
+        </div>
+      `
+      )
+      .join("");
+    return `
+      <div style="background:rgba(0,112,186,0.12); border:1px solid rgba(56,189,248,0.35); border-radius:8px; padding:11px 13px; display:flex; flex-direction:column; gap:4px;">
+        <div style="font-size:12.5px; font-weight:700; color:#38bdf8;">${esc(card.title)}</div>
+        <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">${esc(card.subtitle || "")}</div>
+        ${stepsHtml}
+      </div>
+    `;
+  }
+
+  if (card.card_type === "recipe_bundle" && Array.isArray(d.items)) {
+    const rows = d.items
+      .map((it) => {
+        const isOrdered = it.decision === "ORDERED";
+        const isPantry = it.decision === "IN_PANTRY";
+        const badge = isOrdered
+          ? `<span class="badge badge-green">✓ Ordered · ${esc(it.merchant)} (${it.eta_minutes}m)</span>`
+          : isPantry
+          ? `<span class="badge badge-blue">✓ In Pantry (Skipped)</span>`
+          : `<span class="badge badge-amber">${esc(it.decision)}</span>`;
+        return `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 9px; background:#0e1118; border-radius:6px; font-size:12px; gap:8px;">
+            <div>
+              <div style="font-weight:600;">${esc(it.item_name)} &times; ${it.qty}</div>
+              <div style="margin-top:3px;">${badge}</div>
+            </div>
+            <div style="text-align:right;">
+              <div class="mono" style="font-weight:700; color:${isPantry ? "#9ca3af" : "#34d399"};">
+                ${isPantry ? "$0.00" : money(it.amount)}
+              </div>
+              <div class="mono" style="font-size:10px; color:var(--text-muted);">
+                ${esc(String(it.paypal_id || "").slice(0, 14))}
+              </div>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+
+    return `
+      <div style="background:var(--bg-panel); border:1px solid var(--border-light); border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:6px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-size:13px; font-weight:700; color:#34d399;">${esc(card.title)}</div>
+          <span class="badge badge-green mono">Total: ${money(d.total_cost)}</span>
+        </div>
+        <div style="font-size:11.5px; color:var(--text-muted); margin-bottom:2px;">${esc(card.subtitle || "")}</div>
+        ${rows}
+      </div>
+    `;
+  }
+
+  if (card.card_type === "order_status") {
+    return `
+      <div style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.35); border-radius:8px; padding:10px 12px; font-size:12px;">
+        <div style="display:flex; justify-content:space-between; font-weight:700; color:#34d399;">
+          <span>✓ ${esc(card.title)}</span>
+          <span class="mono">${money(d.amount)}</span>
+        </div>
+        <div style="color:var(--text-muted); margin-top:3px;">${esc(card.subtitle || "")} · PayPal: <span class="mono">${esc(d.paypal_capture_id || "")}</span></div>
+      </div>
+    `;
+  }
+
   if (card.card_type === "order_preview" && Array.isArray(d.offers)) {
     const rows = d.offers
       .map(
