@@ -112,7 +112,7 @@ def get_rules(db: Session = Depends(get_db)):
             "type": r.type,
             "qty": r.qty,
             "active": r.active,
-            "last_period_key": r.last_period_key,
+            "last_period_key": getattr(r, "last_fired_period", None),
             "created_at": r.created_at,
         }
         for r in rules
