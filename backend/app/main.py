@@ -100,6 +100,25 @@ def get_items(db: Session = Depends(get_db)):
     return inventory_service.get_all_items(db)
 
 
+@app.get("/api/rules", response_model=List[Dict[str, Any]])
+def get_rules(db: Session = Depends(get_db)):
+    rules = db.query(RuleModel).filter(RuleModel.active == True).all()
+    items = {it.id: it.name for it in inventory_service.get_all_items(db)}
+    return [
+        {
+            "id": r.id,
+            "item_id": r.item_id,
+            "item_name": items.get(r.item_id, r.item_id),
+            "type": r.type,
+            "qty": r.qty,
+            "active": r.active,
+            "last_period_key": r.last_period_key,
+            "created_at": r.created_at,
+        }
+        for r in rules
+    ]
+
+
 @app.post("/api/items", response_model=Dict[str, Any])
 def create_item(item_in: ItemCreate, db: Session = Depends(get_db)):
     item = inventory_service.create_item(db, item_in)
@@ -642,12 +661,14 @@ def update_env_config(body: Dict[str, Any]):
     return {"success": True, "config": get_env_config()}
 
 
-# 12. Serve Pure HTML/CSS/JS Frontend on Root (http://127.0.0.1:8000/)
-WEB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "web"))
-if os.path.isdir(WEB_DIR):
-    @app.get("/")
-    def serve_index():
-        return FileResponse(os.path.join(WEB_DIR, "index.html"))
-
-    app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
+# 12. Backend API Root Info (Port 8000 = FastAPI Backend; Port 3000 = Frontend Web App)
+@app.get("/")
+def api_root():
+    return {
+        "service": "CommPal FastAPI Backend",
+        "status": "ONLINE",
+        "frontend_url": "http://localhost:3000",
+        "swagger_docs": "http://127.0.0.1:8000/docs",
+        "health_endpoint": "http://127.0.0.1:8000/api/health",
+    }
 
